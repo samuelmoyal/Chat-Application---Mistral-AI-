@@ -11,7 +11,7 @@ export async function POST(req: Request) {
         Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "mistral-small", // tu peux changer pour "mistral-medium" ou autre
+        model: "mistral-small", 
         messages: [{ role: "user", content: message }],
       }),
     });
