@@ -13,6 +13,7 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "mistral-small", 
         messages: [{ role: "user", content: message }],
+        stream: true, 
       }),
     });
 
@@ -21,8 +22,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error }, { status: response.status });
     }
 
-    const data = await response.json();
-    return NextResponse.json(data);
+    return new Response(response.body, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
