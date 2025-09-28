@@ -133,18 +133,42 @@ export default function ChatPage() {
       console.error(err);
     }
   };
-
   return (
-    <div className="max-w-md mx-auto mt-10">
-      <ConversationMenu
-        conversations={conversations}
-        currentId={currentConversation?.id || null}
-        onSelect={handleSelectConversation}
-        onNew={handleNewConversation}
-      />
-      <ChatWindow messages={currentConversation?.messages || []} />
-      {loading && <div className="text-gray-500 text-sm my-1">Mistral répond...</div>}
-      <ChatInput onSend={handleSend} />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-orange-50">
+      <div className="max-w-6xl mx-auto pt-8 px-4">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">
+            <span className="text-orange-500">Mistral</span> Chat
+          </h1>
+          <p className="text-gray-600">Powered by Mistral AI</p>
+        </div>
+
+        {/* Main Chat Interface */}
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          <ConversationMenu
+            conversations={conversations}
+            currentId={currentConversation?.id || null}
+            onSelect={handleSelectConversation}
+            onNew={handleNewConversation}
+          />
+          
+          <ChatWindow messages={currentConversation?.messages || []} />
+          
+          {loading && (
+            <div className="px-6 py-2 border-t bg-orange-50">
+              <div className="flex items-center gap-2 text-orange-600">
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"></div>
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                <span className="text-sm font-medium ml-2">Mistral is typing...</span>
+              </div>
+            </div>
+          )}
+          
+          <ChatInput onSend={handleSend} />
+        </div>
+      </div>
     </div>
   );
 }
