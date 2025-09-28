@@ -2,64 +2,128 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import ChatWindow, { Message } from "@/components/ChatWindow";
+import ChatWindow from "@/components/ChatWindow";
 import ChatInput from "@/components/ChatInput";
-import { addMessage, loadMessages } from "@/lib/storage";
-import { sendMessage, streamMessage } from "@/lib/api";
+import ConversationMenu from "@/components/ConversationMenu";
+import {
+  ChatMessage,
+  Conversation,
+  loadConversations,
+  saveConversations,
+  createConversation,
+} from "@/lib/storage";
+import { streamMessage } from "@/lib/api";
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Charger les conversations au montage
   useEffect(() => {
-    setMessages(loadMessages());
+    const convs = loadConversations();
+    setConversations(convs);
+    if (convs.length > 0) {
+      setCurrentConversation(convs[0]);
+    }
   }, []);
 
+  // Sélection d’une conversation
+  const handleSelectConversation = (conv: Conversation) => {
+    setCurrentConversation(conv);
+  };
+
+  // Nouvelle conversation
+  const handleNewConversation = () => {
+    const conv = createConversation("New Conversation");
+    const updated = [conv, ...conversations];
+    setConversations(updated);
+    saveConversations(updated);
+    setCurrentConversation(conv);
+  };
+
+  // Envoi d’un message
   const handleSend = async (msg: string) => {
-    const userMsg: Message = {
+    if (!currentConversation) return;
+
+    const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
       content: msg,
       timestamp: Date.now(),
     };
-    addMessage(userMsg); 
-    setMessages([...messages, userMsg]); 
-    const assistantMsg: Message = { id: Date.now().toString(), role: "assistant", content: "", timestamp: Date.now() };
+
+    const assistantMsg: ChatMessage = {
+      id: (Date.now() + 1).toString(),
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+    };
+
+    // Mettre à jour localement
+    const updatedConversations = conversations.map((conv) =>
+      conv.id === currentConversation.id
+        ? { ...conv, messages: [...conv.messages, userMsg, assistantMsg] }
+        : conv
+    );
+
+    setConversations(updatedConversations);
+    saveConversations(updatedConversations);
+
+    // Avancer le pointeur
+    setCurrentConversation((prev) =>
+      prev ? { ...prev, messages: [...prev.messages, userMsg, assistantMsg] } : prev
+    );
+
     setLoading(true);
-    setMessages(prev => [...prev, assistantMsg]); 
-
-
     try {
       await streamMessage(msg, (chunk) => {
-        setMessages(prev => {
-          const newMessages = [...prev];
-          // On met à jour la dernière bulle (assistant)
-          const lastIdx = newMessages.length - 1;
-          newMessages[lastIdx] = { ...newMessages[lastIdx], content: newMessages[lastIdx].content + chunk };
-          return newMessages;
+        setConversations((prevConvs) => {
+          const updated = prevConvs.map((conv) =>
+            conv.id === currentConversation.id
+              ? {
+                  ...conv,
+                  messages: conv.messages.map((m, idx) =>
+                    idx === conv.messages.length - 1
+                      ? { ...m, content: m.content + chunk }
+                      : m
+                  ),
+                }
+              : conv
+          );
+          saveConversations(updated);
+          return updated;
         });
-      });
-    } catch (err: any) {
-      setMessages(prev => {
-        const lastIdx = prev.length - 1;
-        const newMessages = [...prev];
-        newMessages[lastIdx] = { ...newMessages[lastIdx], content:`Erreur : ${err.message || JSON.stringify(err)}` };
-        return newMessages;
+
+        setCurrentConversation((prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m, idx) =>
+                  idx === prev.messages.length - 1
+                    ? { ...m, content: m.content + chunk }
+                    : m
+                ),
+              }
+            : prev
+        );
       });
     } finally {
       setLoading(false);
     }
   };
 
-
   return (
     <div className="max-w-md mx-auto mt-10">
-      <ChatWindow messages={messages} />
+      <ConversationMenu
+        conversations={conversations}
+        currentId={currentConversation?.id || null}
+        onSelect={handleSelectConversation}
+        onNew={handleNewConversation}
+      />
+      <ChatWindow messages={currentConversation?.messages || []} />
       {loading && <div className="text-gray-500 text-sm my-1">Mistral répond...</div>}
       <ChatInput onSend={handleSend} />
     </div>
-  )
-
+  );
 }
-
-
