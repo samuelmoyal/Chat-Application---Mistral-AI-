@@ -12,7 +12,8 @@ import {
   saveConversations,
   createConversation,
 } from "@/lib/storage";
-import { streamMessage } from "@/lib/api";
+import { streamMessage, streamMessageWithHistory } from "@/lib/api";
+import { summarizeConversation } from "@/lib/summarizer";
 
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -42,74 +43,94 @@ export default function ChatPage() {
     setCurrentConversation(conv);
   };
 
-  // Envoi d’un message
   const handleSend = async (msg: string) => {
     if (!currentConversation) return;
-
+  
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
       content: msg,
       timestamp: Date.now(),
     };
-
-    const assistantMsg: ChatMessage = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: "",
-      timestamp: Date.now(),
+  
+    // D'abord, juste ajouter le message user (comme dans votre ancien code)
+    let updatedConv: Conversation = {
+      ...currentConversation,
+      messages: [...currentConversation.messages, userMsg],
     };
-
-    // Mettre à jour localement
-    const updatedConversations = conversations.map((conv) =>
-      conv.id === currentConversation.id
-        ? { ...conv, messages: [...conv.messages, userMsg, assistantMsg] }
-        : conv
+  
+    if (updatedConv.messages.length > 20) {
+      const summary = await summarizeConversation(updatedConv);
+      updatedConv.summary = (updatedConv.summary || "") + "\n" + summary;
+      updatedConv.messages = updatedConv.messages.slice(-5);
+    }
+  
+    // Sauvegarder avec juste le message user
+    let newConvs = conversations.map(c =>
+      c.id === updatedConv.id ? updatedConv : c
     );
-
-    setConversations(updatedConversations);
-    saveConversations(updatedConversations);
-
-    // Avancer le pointeur
-    setCurrentConversation((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, userMsg, assistantMsg] } : prev
-    );
-
-    setLoading(true);
+    setConversations(newConvs);
+    setCurrentConversation(updatedConv);
+    saveConversations(newConvs);
+  
+    // Maintenant on envoie à l'API (sans le message assistant vide)
     try {
-      await streamMessage(msg, (chunk) => {
-        setConversations((prevConvs) => {
-          const updated = prevConvs.map((conv) =>
-            conv.id === currentConversation.id
-              ? {
-                  ...conv,
-                  messages: conv.messages.map((m, idx) =>
-                    idx === conv.messages.length - 1
-                      ? { ...m, content: m.content + chunk }
-                      : m
-                  ),
-                }
-              : conv
-          );
-          saveConversations(updated);
-          return updated;
+      await streamMessageWithHistory(updatedConv, msg, (chunk: string) => {
+        setConversations(prev => {
+          const convs = [...prev];
+          const idx = convs.findIndex(c => c.id === updatedConv.id);
+          if (idx !== -1) {
+            const conv = convs[idx];
+            const lastIdx = conv.messages.length - 1;
+            
+            // Si c'est le premier chunk, ajouter le message assistant
+            if (conv.messages[lastIdx].role !== "assistant") {
+              conv.messages.push({
+                id: Date.now().toString() + "-a",
+                role: "assistant",
+                content: chunk,
+                timestamp: Date.now(),
+              });
+            } else {
+              // Sinon, ajouter au message assistant existant
+              conv.messages[lastIdx].content += chunk;
+            }
+            convs[idx] = conv;
+          }
+          return convs;
         });
-
-        setCurrentConversation((prev) =>
-          prev
-            ? {
-                ...prev,
-                messages: prev.messages.map((m, idx) =>
-                  idx === prev.messages.length - 1
-                    ? { ...m, content: m.content + chunk }
-                    : m
-                ),
-              }
-            : prev
-        );
+  
+        // Aussi mettre à jour currentConversation
+        setCurrentConversation(prev => {
+          if (!prev || prev.id !== updatedConv.id) return prev;
+          
+          const newMessages = [...prev.messages];
+          const lastIdx = newMessages.length - 1;
+          
+          // Si c'est le premier chunk, ajouter le message assistant
+          if (newMessages[lastIdx].role !== "assistant") {
+            newMessages.push({
+              id: Date.now().toString() + "-a",
+              role: "assistant",
+              content: chunk,
+              timestamp: Date.now(),
+            });
+          } else {
+            // Sinon, ajouter au message assistant existant
+            newMessages[lastIdx] = {
+              ...newMessages[lastIdx],
+              content: newMessages[lastIdx].content + chunk
+            };
+          }
+          
+          return {
+            ...prev,
+            messages: newMessages
+          };
+        });
       });
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error(err);
     }
   };
 

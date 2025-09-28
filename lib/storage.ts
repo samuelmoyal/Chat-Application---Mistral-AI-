@@ -11,6 +11,7 @@ export type ChatMessage = {
     id: string;
     title: string;
     messages: ChatMessage[];
+    summary?: string; 
   }
   
   const STORAGE_KEY = "chat_messages"

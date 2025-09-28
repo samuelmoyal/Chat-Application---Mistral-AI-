@@ -1,9 +1,11 @@
+// /app/api/relay/route.ts
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    const body = await req.json();
 
+    // body.messages doit déjà être un tableau [{role, content}]
     const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -11,9 +13,9 @@ export async function POST(req: Request) {
         Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "mistral-small", 
-        messages: [{ role: "user", content: message }],
-        stream: true, 
+        model: "mistral-small",
+        messages: body.messages, 
+        stream: true,
       }),
     });
 
